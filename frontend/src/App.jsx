@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-
-const API_BASE_URL = (
-  import.meta.env.VITE_API_URL || "http://127.0.0.1:8000"
-).replace(/\/$/, "");
+import { loadPeopleDetector } from "./lib/peopleDetector";
+import { predictQueue } from "./lib/queuePrediction";
 
 function App() {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
   const intervalRef = useRef(null);
+  const detectorRef = useRef(null);
+  const detectionInProgressRef = useRef(false);
 
   const [cameraOn, setCameraOn] = useState(false);
   const [peopleCount, setPeopleCount] = useState(0);
@@ -49,7 +49,16 @@ function App() {
       }
 
       setCameraOn(true);
-      setStatus("AI camera is running");
+      setStatus("Loading local AI model...");
+
+      try {
+        detectorRef.current = await loadPeopleDetector();
+        setStatus("AI detection running locally");
+      } catch (modelError) {
+        console.error("Local model failed to load:", modelError);
+        setError("Camera is running, but the local AI model could not load.");
+        setStatus("Local AI model unavailable");
+      }
     } catch (err) {
       console.error(err);
       setError(
@@ -82,15 +91,13 @@ function App() {
     setStatus("Camera stopped");
   };
 const detectPeople = async () => {
-  console.log("DETECT FUNCTION CALLED");
+  if (detectionInProgressRef.current) return;
 
   const video = videoRef.current;
   const canvas = canvasRef.current;
-  console.log("VIDEO:", video);
-console.log("CANVAS:", canvas);
-console.log("VIDEO SIZE:", video?.videoWidth, video?.videoHeight);
+  const detector = detectorRef.current;
 
-  if (!video || !canvas) return;
+  if (!video || !canvas || !detector) return;
 
   if (
     video.readyState < 3 ||
@@ -106,55 +113,34 @@ console.log("VIDEO SIZE:", video?.videoWidth, video?.videoHeight);
     });
   }
 
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
+  detectionInProgressRef.current = true;
 
-  const context = canvas.getContext("2d");
+  try {
+    const people = await detector.detect(video, canvas);
+    const queueX1 = video.videoWidth * 0.15;
+    const queueY1 = video.videoHeight * 0.2;
+    const queueX2 = video.videoWidth * 0.85;
+    const queueY2 = video.videoHeight * 0.8;
+    const peopleInQueue = people.filter(({ x1, y1, x2, y2 }) => {
+      const centerX = (x1 + x2) / 2;
+      const centerY = (y1 + y2) / 2;
 
-  if (!context) return;
+      return (
+        queueX1 <= centerX &&
+        centerX <= queueX2 &&
+        queueY1 <= centerY &&
+        centerY <= queueY2
+      );
+    });
 
-  context.drawImage(
-    video,
-    0,
-    0,
-    canvas.width,
-    canvas.height
-  );
-
-  canvas.toBlob(
-    async (blob) => {
-      if (!blob) return;
-
-      const formData = new FormData();
-      formData.append("file", blob, "camera.jpg");
-
-      try {
-        const response = await fetch(
-          `${API_BASE_URL}/detect-people`,
-          {
-            method: "POST",
-            body: formData,
-          }
-        );
-
-        if (!response.ok) {
-          throw new Error(`Server error: ${response.status}`);
-        }
-
-     const data = await response.json();
-
-console.log("YOLO RESULT:", data);
-console.log("YOLO PEOPLE COUNT:", data.people_count);
-        setPeopleCount(Number(data.people_count) || 0);
-        setStatus("AI detection running");
-      } catch (err) {
-        console.error("Detection error:", err);
-        setStatus("AI detection connection failed");
-      }
-    },
-    "image/jpeg",
-    0.9
-  );
+    setPeopleCount(peopleInQueue.length);
+    setStatus("AI detection running locally");
+  } catch (err) {
+    console.error("Local detection error:", err);
+    setStatus("Local AI detection failed");
+  } finally {
+    detectionInProgressRef.current = false;
+  }
 };
   useEffect(() => {
   if (!cameraOn) return;
@@ -187,32 +173,17 @@ const currentDay = now.toLocaleDateString("en-US", {
 });
 const currentHour = now.getHours();
 
-      const response = await fetch(
-        `${API_BASE_URL}/predict`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            day_of_week: currentDay,
-            hour: currentHour,
-            service_location: service,
-            number_of_counters: 3,
-            queue_length: peopleCount,
-            average_service_time: 2.5,
-            students_arriving: peopleCount + 10,
-            exam_period: 0,
-            holiday: 0,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error("Prediction failed");
-      }
-
-      const data = await response.json();
+      const data = predictQueue({
+        day_of_week: currentDay,
+        hour: currentHour,
+        service_location: service,
+        number_of_counters: 3,
+        queue_length: peopleCount,
+        average_service_time: 2.5,
+        students_arriving: peopleCount + 10,
+        exam_period: 0,
+        holiday: 0,
+      });
 
       setPrediction(data);
     } catch (err) {

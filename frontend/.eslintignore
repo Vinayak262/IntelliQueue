@@ -1,0 +1,2 @@
+# Prebuilt ONNX Runtime loader; it is copied unchanged from the dependency.
+public/ort/
