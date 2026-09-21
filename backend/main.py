@@ -5,6 +5,7 @@ from pydantic import BaseModel
 import pandas as pd
 import joblib
 import os
+from pathlib import Path
 
 from ultralytics import YOLO
 from PIL import Image
@@ -16,42 +17,40 @@ app = FastAPI(
     version="1.0.0"
 )
 
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Render supplies the deployed frontend URL at runtime. Local Vite origins stay
+# available so the existing development workflow continues to work.
+allowed_origins = [
+    "http://localhost:5173",
+    "http://localhost:5174",
+]
+frontend_url = os.getenv("FRONTEND_URL", "").strip().rstrip("/")
+if frontend_url:
+    allowed_origins.append(frontend_url)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:5174"
-    ],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-BASE_DIR = os.path.dirname(
-    os.path.dirname(
-        os.path.abspath(__file__)
-    )
-)
-
 waiting_model = joblib.load(
-    os.path.join(
-        BASE_DIR,
-        "models",
-        "waiting_time_model.pkl"
+    BASE_DIR / (
+        "models/waiting_time_model.pkl"
     )
 )
 
 queue_model = joblib.load(
-    os.path.join(
-        BASE_DIR,
-        "models",
-        "queue_length_model.pkl"
+    BASE_DIR / (
+        "models/queue_length_model.pkl"
     )
 )
 
 yolo_model = YOLO(
-    os.path.join(
-        BASE_DIR,
+    BASE_DIR / (
         "yolo11n.pt"
     )
 )

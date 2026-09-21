@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 
+const API_BASE_URL = (
+  import.meta.env.VITE_API_URL || "http://127.0.0.1:8000"
+).replace(/\/$/, "");
+
 function App() {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -114,7 +118,7 @@ function App() {
 
         try {
           const response = await fetch(
-            "http://127.0.0.1:8000/detect-people",
+            `${API_BASE_URL}/detect-people`,
             {
               method: "POST",
               body: formData,
@@ -167,7 +171,7 @@ function App() {
       setPrediction(null);
 
       const response = await fetch(
-        "http://127.0.0.1:8000/predict",
+        `${API_BASE_URL}/predict`,
         {
           method: "POST",
           headers: {
