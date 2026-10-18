@@ -5,4 +5,8 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   base: '/IntelliQueue/',
   plugins: [react()],
+  base: process.env.GITHUB_ACTIONS ? "/IntelliQueue/" : "/",
+  resolve: {
+    conditions: ["onnxruntime-web-use-extern-wasm"],
+  },
 })
